@@ -1,0 +1,10 @@
+.snakemake/*
+genomic_data/*
+logs/*
+mydb/*
+nohup/*
+old/*
+processed/*
+pyout/*
+test/*
+*.log

@@ -1,0 +1,39 @@
+name: re
+channels:
+  - bioconda
+  - defaults
+dependencies:
+  - _libgcc_mutex=0.1=main
+  - _openmp_mutex=5.1=1_gnu
+  - bwa=0.7.17=h5bf99c6_8
+  - bzip2=1.0.8=h7b6447c_0
+  - c-ares=1.18.1=h7f8727e_0
+  - ca-certificates=2022.07.19=h06a4308_0
+  - curl=7.84.0=h5eee18b_0
+  - fastp=0.22.0=h2e03b76_0
+  - fastqc=0.11.9=hdfd78af_1
+  - font-ttf-dejavu-sans-mono=2.37=hd3eb1b0_0
+  - fontconfig=2.13.1=h6c09931_0
+  - freetype=2.11.0=h70c0345_0
+  - icu=58.2=he6710b0_3
+  - krb5=1.19.2=hac12032_0
+  - libcurl=7.84.0=h91b91d3_0
+  - libedit=3.1.20210910=h7f8727e_0
+  - libev=4.33=h7f8727e_1
+  - libgcc-ng=11.2.0=h1234567_1
+  - libgomp=11.2.0=h1234567_1
+  - libnghttp2=1.46.0=hce63b2e_0
+  - libpng=1.6.37=hbc83047_0
+  - libssh2=1.10.0=h8f2d780_0
+  - libstdcxx-ng=11.2.0=h1234567_1
+  - libuuid=1.0.3=h7f8727e_2
+  - libxml2=2.9.14=h74e7548_0
+  - ncurses=6.3=h5eee18b_3
+  - openjdk=8.0.152=h7b6447c_3
+  - openssl=1.1.1q=h7f8727e_0
+  - perl=5.26.2=h14c3975_0
+  - samtools=1.6=hb116620_7
+  - star=2.7.10a=h9ee0642_0
+  - xz=5.2.6=h5eee18b_0
+  - zlib=1.2.12=h5eee18b_3
+prefix: /home/b05b01002/Installed/miniconda3/envs/re
