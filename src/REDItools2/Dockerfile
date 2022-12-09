@@ -29,5 +29,5 @@ RUN cd / && \
 # Add samtools to path
 ENV PATH="/samtools/bin:${PATH}"
 
-COPY annotate_with_DNA.py /reditools2.0/src/cineca/
-
+# COPY annotate_with_DNA.py /reditools2.0/src/cineca/
+COPY extract_coverage.sh /reditools2.0

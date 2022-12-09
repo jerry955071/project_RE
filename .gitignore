@@ -1,3 +1,4 @@
+# Snakemake piepline
 .snakemake/*
 genomic_data/*
 logs/*
@@ -8,3 +9,7 @@ processed/*
 pyout/*
 test/*
 *.log
+
+# python
+__pycache__/*
+*.pyc

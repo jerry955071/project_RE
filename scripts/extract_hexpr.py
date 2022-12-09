@@ -1,9 +1,9 @@
 # IMPORT
 # ==============================================================================
-from tinydb import TinyDB, Query
 from pathlib import Path
 from collections import deque, defaultdict
 from typing import TextIO
+from mods.Location import Location
 import time
 import sys
 import os
@@ -39,63 +39,60 @@ os.makedirs(HEXPR_PATH[_SPECIES], exist_ok=True)
 # function `skimming`
 def skimming(
         handle: TextIO,
-        region: str,
-        pos: int
+        target: Location,
+        order: list
     ):
     # read one line
     newline = next(handle)      
     while True:
         # if EOF
-        if not newline:
-            return None, None, None
+        if (newline == None) or (newline == ""):
+            return None, None
         
         # check position
         regq, posq = newline.split("\t")[:2]
         posq = int(posq)
+        new_loc = Location(regq, posq, order)
+        if new_loc >= target:
+            return newline, new_loc
         
-        # same chromosome, position >= targeted position
-        if (regq == region) and (posq >= pos):
-            return newline, regq, posq
-        
-        # next chromosome
-        if regq != region:
-            return newline, regq, posq
-        
+        # else repeat
         newline = next(handle)
+
 
 # ==============================================================================
 # While
+ref_order = [line.split("\t")[0] for line in open(FAI[_SPECIES], "r")]
 fin_lst = os.listdir(ARCHIVE_PATH[_SPECIES])
 fin_handles = {f: open(ARCHIVE_PATH[_SPECIES] / f) for f in fin_lst}
 fout_handles = {f: open(HEXPR_PATH[_SPECIES] / f, "w") for f in fin_lst}
 fout_handles = {f: open(HEXPR_PATH[_SPECIES] / f, "a") for f in fin_lst}
-line_buffer = {f: tuple([None, None, None]) for f in fin_lst}
+line_buffer = {f: tuple([None, Location("Chr01", -1, ref_order)]) for f in fin_lst}
 
 _EOF = False
-reg = "Chr01"
-pos = 1
-
+target_loc = Location("Chr01", 1, ref_order)
 while not _EOF:
-    print(f"[Region] {reg}:{pos}", file=sys.stderr, end="")    
+    # scan for target location reg:pos
+    print(f"[Region] {target_loc}", file=sys.stderr, end="")    
     
+    # for each file in fin_lst
     _TARGET_UNCHANGED = True
     for file in fin_lst:
-        if not ((line_buffer[file][1] == reg) and (line_buffer[file][2] >= pos)):
-            # skimming
-            newline, new_reg, new_pos = skimming(fin_handles[file], reg, pos)
-            line_buffer[file] = (newline, new_reg, new_pos)
+        # update line if line.loc < target.loc
+        if line_buffer[file][1] < target_loc:
+            newline, new_loc = skimming(fin_handles[file], target_loc, ref_order)
+            line_buffer[file] = (newline, new_loc)
 
         # if any file ends
-        if not newline:
+        if newline == None:
             _EOF = True
             break
 
         # update target location if newline passes target location
-        if not ((new_reg == reg) and (new_pos == pos)):
+        if new_loc > target_loc:
             print("\tSkipped", file=sys.stderr)
             _TARGET_UNCHANGED = False
-            reg = new_reg
-            pos = new_pos
+            target_loc = new_loc
             break
     
     # if target unchanged
@@ -103,7 +100,7 @@ while not _EOF:
         print("\tMatched", file=sys.stderr)
         for k, v in line_buffer.items():
             fout_handles[k].write(v[0])
-        pos += 1
+        target_loc += 1
 
 for k, v in fin_handles.items():
     v.close() 

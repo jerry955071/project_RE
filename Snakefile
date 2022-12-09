@@ -56,6 +56,7 @@ rule reditools2_rna:
         "processed/reditools2/{species}/RNA/{tissue}/{id}.txt"
     params:
         bam="processed/sorted_bam/{species}/RNA/{tissue}/{id}.sorted.bam",
+        strand_correction=lambda wildcards: "-C" if mydb.search(Q.id == wildcards.id)[0]["stranded"] else "-T 2",
         strand=lambda wildcards: 1 if mydb.search(Q.id == wildcards.id)[0]["stranded"] else 0
     log:
         "logs/reditools2/{species}/RNA/{tissue}/{id}.log"
@@ -70,9 +71,7 @@ rule reditools2_rna:
             1>> {log} 2>> {log}
 
         # index bam file
-        if [[ ! -e {params.bam}.bai ]];then
-            samtools index -@ {threads} -b {params.bam}
-        fi
+        samtools index -@ {threads} -b {params.bam}
         
         # docker reditools.py
         docker run \
@@ -82,12 +81,14 @@ rule reditools2_rna:
             -v $(pwd):/data:rw \
             -w /data \
             -t \
+            --name reditools_rna_{wildcards.id} \
             ccc/reditools2:latest \
-            /reditools2.0/src/cineca/reditools.py \
-                -s {params.strand} \
-                -f {params.bam} \
-                -r {input.ref} \
-                -o {output} > {log}
+                /reditools2.0/src/cineca/reditools.py \
+                    -s {params.strand} \
+                    {params.strand_correction} \
+                    -f {params.bam} \
+                    -r {input.ref} \
+                    -o {output} > {log}
         """
 
 # Step 2: REDITools2 for DNA-seq
@@ -106,7 +107,7 @@ rule reditools2_dna_parallel_singleRNA:
         tmp_dir="processed/reditools2/{species}/DNA/{tissue}/{id}/tmp/",
         cov_dir="processed/reditools2/{species}/DNA/coverage/"
     log:
-        "logs/reditools2/{species}/DNA/dna.log"
+        "logs/reditools2/{species}/DNA/{tissue}/{id}.log"
     shell:
         """
         # reditools2
@@ -117,6 +118,7 @@ rule reditools2_dna_parallel_singleRNA:
             -v $(pwd):/data:rw \
             -w /data \
             -t \
+            --name reditools_parallel_dna_{wildcards.id} \
             ccc/reditools2:latest \
             mpirun -np {threads} \
                 /reditools2.0/src/cineca/parallel_reditools.py \
@@ -138,6 +140,7 @@ rule reditools2_dna_parallel_singleRNA:
             -v $(pwd):/data:rw \
             -w /data \
             -t \
+            --name reditools_merge_{wildcards.id} \
             ccc/reditools2:latest \
                 bash /reditools2.0/merge.sh \
                 {params.tmp_dir} \
@@ -354,6 +357,7 @@ rule reditools_table_to_bed:
             -v $(pwd):/data:rw \
             -w /data \
             -t \
+            --name reditools_table_to_bed_{wildcards.id} \
             ccc/reditools2:latest \
             python /reditools2.0/src/cineca/reditools_table_to_bed.py \
                 -i {input}.tmp \
