@@ -1,0 +1,8 @@
+{
+    "path_mydb": "/home/b05b01002/HDD3/project_RE/mydb",
+    "mydb": "/home/b05b01002/HDD3/project_RE/mydb/db.json",
+    "mapq_cutoff": {
+        "bwa": 30,
+        "star": 255
+    }
+}

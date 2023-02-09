@@ -1,0 +1,42 @@
+---
+title: "Differential Editing Analysis"
+author: "Chia-Chen Chu"
+date: "2023-01-09"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Loading packages
+```{r}
+library(doParallel)
+library(magrittr)
+```
+
+## Demo `tabix`
+```{bash}
+cd /home/rstudio/local
+tabix pyout/archive-20230104/ptr-tsp1-xr.txt.gz Chr01:13951-13951
+```
+
+## Demo edsites p < 0.05
+```{r}
+df <- read.table("pval.tsv", header = TRUE)
+tmp <-
+  df[df$xp < 0.05 & df$xl < 0.05 & df$xs < 0.05, ] %>% na.exclude
+
+for (r in 1:nrow(tmp)) {
+  View(tmp[r, ])
+  getData(tabix,
+          pSamples,
+          reditHeader,
+          tmp[r, 1],
+          tmp[r, 2],
+          para = TRUE)[, c("Reference", "Coverage", "AllSubs", "BaseCount", "Frequency")] %>%
+    cbind(s2g(rownames(.)) %>% unlist) %>%
+    View()
+  readline(prompt = "Press [enter] to continue; [esc] to quit")
+}
+```

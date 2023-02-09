@@ -1,0 +1,34 @@
+{
+    "threads": 55,
+    "target_positions": "shout/edsites/ptr.txt",
+    "redithead": [
+      "Region",
+      "Position",
+      "Reference",
+      "Strand",
+      "Coverage",
+      "MeanQ",
+      "BaseCount",
+      "AllSubs",
+      "Frequency",
+      "gCoverage",
+      "gMeanQ",
+      "gBaseCount",
+      "gAllSubs",
+      "gFrequency"
+    ],
+    "pairing": [
+      "xylem:phloem",
+      "xylem:leaf",
+      "xylem:shoot",
+      "phloem:leaf",
+      "phloem:shoot",
+      "leaf:shoot"
+    ],
+    "samples": {
+        "xylem": [],
+        "phloem": [],
+        "leaf": [],
+        "shoot": []
+    }
+}

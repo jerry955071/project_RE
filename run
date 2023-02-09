@@ -1,0 +1,22 @@
+#!/bin/bash
+
+datetime=$(date +%Y%m%d-%H:%M:%S)
+conda run \
+    -n snakemake \
+    --no-capture-output \
+    --live-stream \
+    snakemake \
+        -c 55 \
+        --use-conda \
+        -np \
+        > nohup/snakemake.${datetime}.dry
+
+conda run \
+    -n snakemake \
+    --no-capture-output \
+    --live-stream \
+    nohup snakemake \
+        -c 55 \
+        --use-conda \
+        --wms-monitor http://127.0.0.1:8000 \
+        > nohup/snakemake.${datetime}.out &
