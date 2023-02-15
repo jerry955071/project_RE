@@ -1,0 +1,9 @@
+services:
+    rstudio_re:
+        image: ccc/rstudio:re
+        restart: unless-stopped
+        command: /init
+        environment:
+            - PASSWORD=0000
+        ports:
+            - 8787:8787
