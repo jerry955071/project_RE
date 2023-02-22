@@ -1,0 +1,11 @@
+version: '3.6'
+services:
+  parasol_hub:
+    image: ccc/parasol
+    restart: unless-stopped
+    networks: parasol_network
+  
+  parasol_node:
+    image: ccc/parasol
+    restart: unless-stopped
+    networks: parasol_network
