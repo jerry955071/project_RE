@@ -1,22 +1,49 @@
 #!/bin/bash
 
+# requesting output or rule
+OUTPUT=all
+THREADS=48
+# OUTPUT=outputs/reditools/Egr/egr-test-tr.txt
+
+# record current time
 datetime=$(date +%Y%m%d-%H:%M:%S)
-conda run \
+
+# dry-run && run || more nohup/*.dry
+if conda run \
     -n snakemake \
     --no-capture-output \
     --live-stream \
     snakemake \
-        -c 55 \
+        -c $THREADS \
         --use-conda \
+        --rerun-incomplete \
         -np \
+        $OUTPUT \
         > nohup/snakemake.${datetime}.dry
-
-conda run \
-    -n snakemake \
-    --no-capture-output \
-    --live-stream \
-    nohup snakemake \
-        -c 55 \
-        --use-conda \
-        --wms-monitor http://127.0.0.1:8000 \
-        > nohup/snakemake.${datetime}.out &
+then
+    echo LGTM!
+    code  nohup/snakemake.${datetime}.dry
+    nohup conda run \
+        -n snakemake \
+        --no-capture-output \
+        --live-stream \
+        nohup snakemake \
+            -c $THREADS \
+            --use-conda \
+            --wms-monitor http://127.0.0.1:8000 \
+            --rerun-incomplete \
+            $OUTPUT \
+            > nohup/snakemake.${datetime}.out &
+    
+    echo Following file: nohup/snakemake.${datetime}.out
+    tail -f nohup/snakemake.${datetime}.out
+else
+    more nohup/snakemake.${datetime}.dry
+    # echo Dry-run failed. Check file \'nohup/snakemake.${datetime}.dry\'?
+    # select yn in "Yes" "Nope"; do
+    #     case $yn in
+    #         Yes ) more nohup/snakemake.${datetime}.dry; break;;
+    #         Nope ) exit;;
+    #     esac
+    # done
+fi

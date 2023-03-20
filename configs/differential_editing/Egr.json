@@ -1,8 +1,50 @@
 {
+    "threads": 20,
+    "target_positions": "outputs/target_positions/Egr/set1.txt",
+    "tmpdir1": "outputs/toREDIt/Egr/",
+    "tmpdir2": "outputs/outREDIt/Egr/tmp/",
+    "outdir": "outputs/outREDIt/Egr/pvalue.csv",
+    "redithead": {
+      "Region": "str",
+      "Position": "int64",
+      "Reference": "str",
+      "Strand": "int64",
+      "Coverage": "float64",
+      "MeanQ": "float64",
+      "BaseCount": "object",
+      "AllSubs": "str",
+      "Frequency": "float64",
+      "gCoverage": "object",
+      "gMeanQ": "object",
+      "gBaseCount": "str",
+      "gAllSubs": "str",
+      "gFrequency": "object"
+    },
+    "pairing": [
+      "xylem:phloem",
+      "xylem:leaf",
+      "xylem:shoot"
+    ],
     "samples": {
-        "xylem": [],
-        "phloem": [],
-        "leaf": [],
-        "shoot": []
+        "xylem": [
+            "outputs/target_reditable/Egr/set1/egr-tsp4-xr.txt",
+            "outputs/target_reditable/Egr/set1/egr-tsp5-xr.txt",
+            "outputs/target_reditable/Egr/set1/egr-tsp7-xr.txt"
+        ],
+        "phloem": [
+            "outputs/target_reditable/Egr/set1/egr-tsp4-pr.txt",
+            "outputs/target_reditable/Egr/set1/egr-tsp5-pr.txt",
+            "outputs/target_reditable/Egr/set1/egr-tsp7-pr.txt"
+          ],
+        "leaf": [
+            "outputs/target_reditable/Egr/set1/egr-tsp4-lr.txt",
+            "outputs/target_reditable/Egr/set1/egr-tsp5-lr.txt",
+            "outputs/target_reditable/Egr/set1/egr-tsp7-lr.txt"
+          ],
+        "shoot": [
+            "outputs/target_reditable/Egr/set1/egr-tsp4-sr.txt",
+            "outputs/target_reditable/Egr/set1/egr-tsp5-sr.txt",
+            "outputs/target_reditable/Egr/set1/egr-tsp7-sr.txt"
+          ]
     }
 }

@@ -1,9 +1,9 @@
 FROM rocker/rstudio:4.2.2
 
 # install packages
-RUN Rscript -e "install.packages(c('foreach', 'doParallel', 'magrittr'));"
+RUN Rscript -e "install.packages(c('foreach', 'doParallel', 'magrittr', 'rjson', 'data.table'));"
 
-# install samtools (for tabix and bgzip)
+# install tabix
 RUN apt-get update && \
     apt-get install -y \
         libncurses5-dev \

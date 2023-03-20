@@ -5,11 +5,19 @@ logs/*
 mydb/*
 nohup/*
 old/*
-processed/*
+outputs/*
 pyout/*
+pyplt/*
+shout/*
 test/*
+temp/*
+benchmarks/*
 *.log
 
 # python
 __pycache__/*
 *.pyc
+.ipynb_checkpoints/*
+
+# vscode
+.vscode/*

@@ -34,6 +34,7 @@ dependencies:
   - perl=5.26.2=h14c3975_0
   - samtools=1.6=hb116620_7
   - star=2.7.10a=h9ee0642_0
+  - tabix=1.11=hdfd78af_0
   - xz=5.2.6=h5eee18b_0
   - zlib=1.2.12=h5eee18b_3
 prefix: /home/b05b01002/Installed/miniconda3/envs/re

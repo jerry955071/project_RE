@@ -42,23 +42,20 @@ def skimming(
         target: Location,
         order: list
     ):
-    # read one line
-    newline = next(handle)      
     while True:
-        # if EOF
-        if (newline == None) or (newline == ""):
+        # try read line
+        try:
+            newline = next(handle)
+        except StopIteration:
             return None, None
         
         # check position
         regq, posq = newline.split("\t")[:2]
         posq = int(posq)
-        new_loc = Location(regq, posq, order)
+        new_loc = Location(regq, posq, name="<name>", order=order)
         if new_loc >= target:
             return newline, new_loc
         
-        # else repeat
-        newline = next(handle)
-
 
 # ==============================================================================
 # While
@@ -67,7 +64,7 @@ fin_lst = os.listdir(ARCHIVE_PATH[_SPECIES])
 fin_handles = {f: open(ARCHIVE_PATH[_SPECIES] / f) for f in fin_lst}
 fout_handles = {f: open(HEXPR_PATH[_SPECIES] / f, "w") for f in fin_lst}
 fout_handles = {f: open(HEXPR_PATH[_SPECIES] / f, "a") for f in fin_lst}
-line_buffer = {f: tuple([None, Location("Chr01", -1, ref_order)]) for f in fin_lst}
+line_buffer = {f: tuple([None, Location("Chr01", -1, order=ref_order)]) for f in fin_lst}
 
 _EOF = False
 target_loc = Location("Chr01", 1, ref_order)

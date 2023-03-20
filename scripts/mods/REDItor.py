@@ -1,5 +1,5 @@
 from collections import namedtuple
-from typing import TextIO
+import os
 
 class REDItor:
     def __init__(self) -> None:
@@ -53,34 +53,34 @@ class REDItor:
             val.append(func(raw))        
         return self.REDItuple._make(val)
         
-    def index(
-        self,
-        filename: str,
-        idx_func: callable = lambda x: x.strip().split("\t")[:2],
-        targets: set = None
-        ) -> dict:
-        with open(filename) as handle:
-            idx = {}
-            line = handle.readline()
-            while line:
-                if targets:
-                    if tuple(idx_func(line)) in targets:
-                        idx[tuple(idx_func(line))] = handle.tell()
-                else:
-                    idx[tuple(idx_func(line))] = handle.tell()
-                line = handle.readline()
-        return idx
+    # def index(
+    #     self,
+    #     filename: str,
+    #     idx_func: callable = lambda x: x.strip().split("\t")[:2],
+    #     targets: set = None
+    #     ) -> dict:
+    #     with open(filename) as handle:
+    #         idx = {}
+    #         line = handle.readline()
+    #         while line:
+    #             if targets:
+    #                 if tuple(idx_func(line)) in targets:
+    #                     idx[tuple(idx_func(line))] = handle.tell()
+    #             else:
+    #                 idx[tuple(idx_func(line))] = handle.tell()
+    #             line = handle.readline()
+    #     return idx
         
 # class REDItable(object):
 #     def __init__(
 #         self,
-#         fname: str,
-#         fidx: str = None
+#         fname: str
 #         ) -> None:
 #         self.fname = fname
-#         self.fidx = fidx if fidx else f"{fname}.idx"
-        
 #         pass
+    
+#     def tabix_query(self, query):
+#         return REDItor
         
         
 if __name__ == "__main__":
@@ -89,9 +89,6 @@ if __name__ == "__main__":
     handle = open("pyout/archive-20230104/egr-tsp4-xr.txt")
     line = handle.readline()
     t = r.parser(line)
-    time()
-    idx = r.index("pyout/archive-20230104/egr-tsp4-xr.txt")
-    time()
     print(t)
     print("")
 

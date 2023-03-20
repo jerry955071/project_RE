@@ -1,37 +1,36 @@
 from tinydb import TinyDB, Query
 from pathlib import Path
 
+# 
+configfile: "configs/config.json"
+wildcard_constraints:
+    species="Ptr|Egr",
+    id="\w*-\w*-\w*",
+    filter_preset="\w*"
 
-# Configure `mydb`
-MYDB_PATH = Path("/home/b05b01002/HDD3/project_RE/mydb/")
-mydb = TinyDB(MYDB_PATH / "db.json")
+# configure `MYDB`
+MYDB_PATH=Path(config["path_mydb"])
+MYDB = TinyDB(config["mydb"])
+# SPECIES = ["Ptr", "Egr"]
+SPECIES = ["Ptr"]
 Q = Query()
 
-
-# Query all records to process
-_RECORDS = []
-_SPECIES = ["Ptr", "Egr"]
-for spe in _SPECIES:
-    _RECORDS += mydb.search((Q.species == spe) & (Q.type == "RNA"))
-
-
-# Checking db.search results
-rule check_query:
-    run:
-        print("[RULE: check_query] Found the following files:")
-        for r in _RECORDS:
-            print("[RULE: check_query] " + r["id"])    
-       
+# parameter preset to filter reditable using awk
+FILTER_PRESET = "set1"
 
 # Requesting all output files
+# ==============================================================================
 rule all:
     input:
         [
-            "processed/reditools2/%s/Final/%s/%s.txt" % (
-            r["species"],
-            r["tissue"],
-            r["id"]
-            ) for r in _RECORDS
+            "outputs/%s/%s/%s.txt.gz.tbi" % (
+            "reditools2" if record["stranded"] else "reditools",
+            record["species"],
+            record["id"]
+            ) for record in MYDB.search(
+                (Q.species.one_of(SPECIES)) & 
+                (Q.type == "RNA")
+            )
         ]
     run:
         print("[RULE: ALL] Requesting the following outputs:")
@@ -39,41 +38,189 @@ rule all:
             print(f"[RULE: ALL] {fname}")
 
 
-# Identify RNA editing events using REDItools2.
-# Following the tutorial on https://github.com/BioinfoUNIBA/REDItools2.
+# Identify differential editing sites
 # ==============================================================================
-# Step 1: REDITools2 for RNA-seq
-rule reditools2_rna:
-    """
-    Following the tutorial on https://github.com/BioinfoUNIBA/REDItools2
-    """
+rule get_target_reditable:
+    conda: "envs/re.yml"
+    input:
+        reditable=lambda wildcards: [
+            "outputs/%s/%s/%s.txt.gz" % (
+                "reditools2" if record["stranded"] else "reditools",
+                record["species"],
+                record["id"]
+            ) for record in MYDB.search(
+                (Q.id == wildcards.id)
+            )
+        ],
+        target_positions="outputs/target_positions/{species}/{filter_preset}.txt"
+    output:
+        "outputs/target_reditable/{species}/{filter_preset}/{id}.txt"
+    log:
+        "logs/get_target_reditable/{species}/{filter_preset}/{id}.log"
+    benchmark:
+        "benchmarks/get_target_reditable/{species}/{filter_preset}/{id}.tsv"
+    shell:
+        """
+        tabix -R {input.target_positions} {input.reditable} > {output} 2> {log}
+        """
+    
+
+rule get_target_positions:
+    input:
+        lambda wildcards: [
+            "outputs/%s/%s/%s.txt" % (
+                "reditools2" if record["stranded"] else "reditools",
+                record["species"],
+                record["id"]
+            ) for record in MYDB.search(
+                (Q.species == wildcards.species) &
+                (Q.type == "RNA")
+            )
+        ]
+    output:
+        outdir=directory("outputs/target_positions/{species}/{filter_preset}/"),
+        fout="outputs/target_positions/{species}/{filter_preset}.txt"
+    params:
+        lambda wildcards: config["filter_presets"][wildcards.filter_preset]
+    log:
+        "logs/get_target_positions/{species}/{filter_preset}.log"
+    benchmark:
+        "benchmarks/get_target_positions/{species}/{filter_preset}.tsv"
+    shell:
+        """
+        echo '' > {log}
+        mkdir {output.outdir} > {log} 2>&1
+        for f in {input}
+        do
+            out_tmp={output.outdir}/$(basename $f).tmp
+            awk \
+                -v FS='\t' \
+                -v OFS='\t' \
+                '{params}' \
+                $f > $out_tmp &
+            echo PID: $! $f >> {log}
+        done
+        wait
+
+        cat {output.outdir}/*.tmp \
+            | sort -k1,1 -k2,2n \
+            | uniq > {output.fout}
+        """
+
+# Tabix indicing
+# ==============================================================================
+# tabix index REDItables
+rule tabix_reditable:
     conda: "envs/re.yml"
     threads: 1
     input:
-        sam="processed/sorted_bam/{species}/RNA/{tissue}/{id}/Aligned.out.sam",
-        ref="genomic_data/{species}/{species}.fa"
+        "{fname}.txt"
     output:
-        "processed/reditools2/{species}/RNA/{tissue}/{id}.txt"
-    params:
-        bam="processed/sorted_bam/{species}/RNA/{tissue}/{id}.sorted.bam",
-        strand_correction=lambda wildcards: "-C" if mydb.search(Q.id == wildcards.id)[0]["stranded"] else "-T 2",
-        strand=lambda wildcards: 1 if mydb.search(Q.id == wildcards.id)[0]["stranded"] else 0
+        gz="{fname}.txt.gz",
+        tbi="{fname}.txt.gz.tbi"
     log:
-        "logs/reditools2/{species}/RNA/{tissue}/{id}.log"
+        "logs/tabix_reditable/{fname}.log"
+    benchmark:
+        "benchmarks/tabix_reditable/{fname}.tsv"
     shell:
         """
-        # sam -> sorted.bam
-        samtools sort \
-            -@ {threads} \
-            -O BAM \
-            -o {params.bam} \
-            {input.sam} \
-            1>> {log} 2>> {log}
+        bgzip < {input} > {output.gz} \
+            && tabix -s 1 -b 2 -e 2 -c 'R' {output.gz} >> {log}
+        """
 
-        # index bam file
-        samtools index -@ {threads} -b {params.bam}
-        
-        # docker reditools.py
+
+# tabix index GFF
+rule tabix_gff:
+    conda: 
+        "envs/re.yml"
+    threads: 
+        1
+    input: 
+        "{fname}.gff3"
+    output:
+        gz="{fname}.gff3.gz",
+        tbi="{fname}.gff3.gz.tbi"
+    log: 
+        "logs/tabix_gff/{fname}.log"
+    benchmark:
+        "benchmarks/tabix_gff/{fname}.tsv"
+    shell:
+        """
+        # NOTE: grep -v  ^"#" | sort | bgzip | tabix
+        grep ^"#" {input} > {log}
+        grep -v ^"#" {input} \
+            | sort -k1,1 -k4,4n \
+            | bgzip 1> {output.gz} 2>> {log} \
+            && tabix -p gff {output.gz} >> {log}
+        """
+
+
+# Identify RNA editing events using REDItools 1 & 2.
+# Following the tutorial on https://github.com/BioinfoUNIBA/REDItools2.
+# ==============================================================================
+# Using REDItools v1.3 for unstranded data:
+rule reditools1:
+    threads: 8
+    input:
+        dna="outputs/sorted_bam/{species}/DNA/{species}.sorted.bam",
+        rna="outputs/sorted_bam/{species}/RNA/{id}.sorted.bam",
+        asm="genomic_data/{species}/{species}.fa",
+        ant="genomic_data/{species}/{species}.gff3.gz"
+    output:
+        outdir=directory("outputs/reditools/{species}/{id}/"),
+        reditable="outputs/reditools/{species}/{id}.txt"
+    params:
+        mapq_dna=config["mapq_cutoff"]["bwa"],
+        mapq_rna=config["mapq_cutoff"]["star"]
+    log:
+        "logs/reditools/{species}/{id}.log"
+    benchmark:
+        "benchmarks/reditools/{species}/{id}.tsv"
+    shell:
+        """
+        # NOTE: REDItoolDnaRna.py
+        docker run \
+            --cpus {threads} \
+            --rm \
+            -u $(id -u) \
+            -v $(pwd):/data:rw \
+            -w /data \
+            -t \
+            --name reditools_{wildcards.id} \
+            ccc/reditool:v1.3 \
+                REDItoolDnaRna.py \
+                -i {input.rna} \
+                -j {input.dna} \
+                -f {input.asm} \
+                -t {threads} \
+                -o {output.outdir} \
+                -m {params.mapq_dna},{params.mapq_rna} \
+                -G {input.ant} \
+                2>&1 \
+                > {log} && \
+        cp {output.outdir}/DnaRna_*/outTable_* {output.reditable}  
+        """
+
+
+# ==============================================================================
+# Using REDITools 2 for stranded data:
+# Step 1: REDITools2 for RNA-seq
+rule reditools2_RNA:
+    conda: "envs/re.yml"
+    threads: 1
+    input:
+        rna="outputs/sorted_bam/{species}/RNA/{id}.sorted.bam",
+        asm="genomic_data/{species}/{species}.fa"
+    output:
+        "outputs/reditools2/{species}/RNA/{id}.txt"
+    params:
+        strand=1
+    log:
+        "logs/reditools2/{species}/RNA/{id}.log"
+    benchmark:
+        "benchmarks/reditools2/{species}/RNA/{id}.tsv"
+    shell:
+        """
         docker run \
             --cpus {threads} \
             --rm \
@@ -84,33 +231,37 @@ rule reditools2_rna:
             --name reditools_rna_{wildcards.id} \
             ccc/reditools2:latest \
                 /reditools2.0/src/cineca/reditools.py \
-                    -s {params.strand} \
-                    {params.strand_correction} \
-                    -f {params.bam} \
-                    -r {input.ref} \
-                    -o {output} > {log}
+                -f {input.rna} \
+                -o {output} \
+                -r {input.asm} \
+                -s {params.strand} \
+                -H \
+                > {log}
         """
 
+
+
 # Step 2: REDITools2 for DNA-seq
-rule reditools2_dna_parallel_singleRNA:
+# NOTE: passing directory as input
+rule parallel_reditools2_DNA_with_merged_RNA:
     conda: "envs/re.yml"
     threads: 32
     input:
-        target_pos="processed/reditools2/{species}/RNA/{tissue}/{id}.bed",
-        dna="processed/sorted_bam/{species}/DNA/merged.sorted.bam",
-        cov_dna="processed/reditools2/{species}/DNA/coverage/merged.sorted.cov"
+        fa="genomic_data/{species}/{species}.fa",
+        fai="genomic_data/{species}/{species}.fa.fai",
+        rna="outputs/reditools2/{species}/RNA/{species}.merged.bed",
+        dna="outputs/sorted_bam/{species}/DNA/{species}.sorted.bam",
+        cov_dna="outputs/reditools2/{species}/DNA/coverage/{species}.sorted.cov",
+        cov_dna_dir="outputs/reditools2/{species}/DNA/coverage/"
     output:
-        "processed/reditools2/{species}/DNA/{tissue}/{id}.txt"
-    params:
-        ref="genomic_data/{species}/{species}.fa",
-        size_file="genomic_data/{species}/{species}.fa.fai",
-        tmp_dir="processed/reditools2/{species}/DNA/{tissue}/{id}/tmp/",
-        cov_dir="processed/reditools2/{species}/DNA/coverage/"
+        tmp_dir=directory("outputs/reditools2/{species}/DNA/tmp/"),
     log:
-        "logs/reditools2/{species}/DNA/{tissue}/{id}.log"
+        "logs/reditools2/{species}/DNA/parallel_reditools_dna.log",
+    benchmark:
+        "benchmarks/reditools2/{species}/DNA/parallel_reditools_dna.log"
     shell:
         """
-        # reditools2
+        # NOTE: parallel_reditools.py --dna
         docker run \
             --cpus {threads} \
             --rm \
@@ -118,21 +269,34 @@ rule reditools2_dna_parallel_singleRNA:
             -v $(pwd):/data:rw \
             -w /data \
             -t \
-            --name reditools_parallel_dna_{wildcards.id} \
             ccc/reditools2:latest \
             mpirun -np {threads} \
                 /reditools2.0/src/cineca/parallel_reditools.py \
                     --dna \
-                    -r {params.ref} \
+                    -r {input.fa} \
                     -f {input.dna} \
-                    -B {input.target_pos} \
+                    -B {input.rna} \
                     -G {input.cov_dna} \
-                    -D {params.cov_dir} \
-                    -Z {params.size_file} \
-                    -t {params.tmp_dir} \
-                    -o {output} > {log}
+                    -D {input.cov_dna_dir}/ \
+                    -Z {input.fai} \
+                    -t {output.tmp_dir}/ \
+                    -H > {log}
+        """
 
-        # merge parallel outputs
+rule merge_parallel_reditools2_DNA_with_merged_RNA:
+    conda: "envs/re.yml"
+    threads: 2
+    input:
+        tmp_dir="outputs/reditools2/{species}/DNA/tmp/"
+    output:
+        output="outputs/reditools2/{species}/DNA/merged_RNA_DNA.txt.gz"
+    log:
+        "logs/reditools2/{species}/DNA/merge.log"
+    benchmark:
+        "benchmarks/reditools2/{species}/DNA/merge.log"
+    shell:
+        """
+        # NOTE: /reditools2.0/merge.sh
         docker run \
             --cpus {threads} \
             --rm \
@@ -140,15 +304,553 @@ rule reditools2_dna_parallel_singleRNA:
             -v $(pwd):/data:rw \
             -w /data \
             -t \
-            --name reditools_merge_{wildcards.id} \
             ccc/reditools2:latest \
                 bash /reditools2.0/merge.sh \
-                {params.tmp_dir} \
-                {output}.gz \
-                {threads}
+                {input.tmp_dir} \
+                {output.output} \
+                {threads} > {log}
+        """
+
+
+
+# Step 3: annotate RNA.txt with merged_RNA_DNA.txt.gz
+rule reditools2_annot_with_merged_RNA_DNA:
+    threads: 1
+    input:
+        rna="outputs/reditools2/{species}/RNA/{id}.txt",
+        dna="outputs/reditools2/{species}/DNA/merged_RNA_DNA.txt.gz",
+        fai="genomic_data/{species}/{species}.fa.fai"
+    output:
+        "outputs/reditools2/{species}/{id}.txt"
+    log:
+        "logs/reditools2/{species}/annot/{id}.log"
+    benchmark:
+        "benchmarks/reditools2/{species}/annot/{id}.tsv"
+    shell:
+        """
+        docker run \
+            --cpus {threads} \
+            --rm \
+            -u $(id -u) \
+            -v $(pwd):/data:rw \
+            -w /data \
+            --name reditools_annot_{wildcards.id} \
+            ccc/reditools2:latest \
+                python /reditools2.0/src/cineca/annotate_with_DNA.py \
+                    -R {input.fai} \
+                    -r {input.rna} \
+                    -d {input.dna} \
+                    -H \
+                    2> {log} 1> {output}
+        """
+
+
+# # Step 2: REDITools2 for DNA-seq
+# rule reditools2_dna_parallel_singleRNA:
+#     conda: "envs/re.yml"
+#     threads: 16
+#     input:
+#         target_pos="outputs/reditools2/{species}/RNA/{id}.bed",
+#         dna="outputs/sorted_bam/{species}/DNA/merged.sorted.bam",
+#         cov_dna="outputs/reditools2/{species}/DNA/coverage/merged.sorted.cov"
+#     output:
+#         "outputs/reditools2/{species}/DNA/{id}.txt"
+#     params:
+#         ref="genomic_data/{species}/{species}.fa",
+#         size_file="genomic_data/{species}/{species}.fa.fai",
+#         tmp_dir=temp("outputs/reditools2/{species}/DNA/{id}/tmp/"),
+#         cov_dir="outputs/reditools2/{species}/DNA/coverage/"
+#     log:
+#         "logs/reditools2/{species}/DNA/{id}.log"
+#     benchmark:
+#         "benchmarks/reditools2/{species}/DNA/{id}.tsv"
+#     shell:
+#         """
+#         # NOTE: reditools2
+#         docker run \
+#             --cpus {threads} \
+#             --rm \
+#             -u $(id -u) \
+#             -v $(pwd):/data:rw \
+#             -w /data \
+#             -t \
+#             --name reditools_parallel_dna_{wildcards.id} \
+#             ccc/reditools2:latest \
+#             mpirun -np {threads} \
+#                 /reditools2.0/src/cineca/parallel_reditools.py \
+#                 --dna \
+#                 -r {params.ref} \
+#                 -f {input.dna} \
+#                 -B {input.target_pos} \
+#                 -G {input.cov_dna} \
+#                 -D {params.cov_dir} \
+#                 -Z {params.size_file} \
+#                 -t {params.tmp_dir} \
+#                 -o {output} > {log}
+
+#         # NOTE: merge parallel outputs
+#         docker run \
+#             --cpus {threads} \
+#             --rm \
+#             -u $(id -u) \
+#             -v $(pwd):/data:rw \
+#             -w /data \
+#             -t \
+#             --name reditools_merge_{wildcards.id} \
+#             ccc/reditools2:latest \
+#                 bash /reditools2.0/merge.sh \
+#                 {params.tmp_dir} \
+#                 {output}.gz \
+#                 {threads}
             
-        # gunzip
-        gunzip {output}.gz
+#         # NOTE: gunzip
+#         gunzip {output}.gz
+#         """
+#
+#
+# # Step 3: annotate RNA.txt with DNA.txt
+# rule reditools2_annot:
+#     threads: 1
+#     input:
+#         rna="outputs/reditools2/{species}/RNA/{id}.txt",
+#         dna="outputs/reditools2/{species}/DNA/{id}.txt",
+#         fai="genomic_data/{species}/{species}.fa.fai"
+#     output:
+#         "outputs/reditools2/{species}/{id}.txt"
+#     log:
+#         "logs/reditools2/{species}/Final/{id}.log"
+#     benchmark:
+#         "benchmarks/reditools2/{species}/Final/{id}.tsv"
+#     shell:
+#         """
+#         docker run \
+#             --cpus {threads} \
+#             --rm \
+#             -u $(id -u) \
+#             -v $(pwd):/data:rw \
+#             -w /data \
+#             --name reditools_annot_{wildcards.id} \
+#             ccc/reditools2:latest \
+#                 python /reditools2.0/src/cineca/annotate_with_DNA.py \
+#                     -R {input.fai} \
+#                     -r {input.rna} \
+#                     -d {input.dna} \
+#                     -H \
+#                     2> {log} 1> {output}
+#         """
+
+
+# Accessory rules to reditools 1&2
+# ==============================================================================
+# merge RNA.bed files
+rule get_merge_rna_bed:
+    threads: 4
+    input:
+        lambda wildcards:
+            [
+                "outputs/reditools2/%s/RNA/%s.bed" % (
+                r["species"],
+                r["id"]
+                ) for r in MYDB.search(
+                    (Q.species == wildcards.species) &
+                    (Q.type == "RNA") &
+                    (Q.stranded == True)
+                )
+            ]
+    output:
+        tmp=temp("outputs/reditools2/{species}/RNA/{species}.bed.tmp"),
+        merged="outputs/reditools2/{species}/RNA/{species}.merged.bed"
+    log:
+        "logs/merge_rna/{species}.log"
+    benchmark:
+        "benchmarks/merge_rna/{species}.tsv"
+    shell:
+        """
+        # NOTE: cat and sort all input files (low-mem)
+        touch {output.tmp}
+        for file in {input}
+        do 
+            # NOTE: cat and sort 2 bed files
+            cat {output.tmp} "$file" | sort -k1,1 -k2,2n > {output.tmp}
+        done
+
+        # NOTE: bedtools merge
+        docker run \
+            --cpus {threads} \
+            --rm \
+            -u $(id -u) \
+            -v $(pwd):/data:rw \
+            -w /data \
+            -t \
+            biocontainers/bedtools:v2.27.1dfsg-4-deb_cv1 \
+            bedtools merge -i {output.tmp} 1> {output.merged} 2> {log}
+        """
+    
+
+
+# reditable to bed
+rule reditable2bed:
+    threads: 1
+    input:
+        "outputs/reditools2/{species}/RNA/{id}.txt"
+    output:
+        "outputs/reditools2/{species}/RNA/{id}.bed"
+    log:
+        "logs/reditools2/reditable2bed/{species}/{id}.log"
+    benchmark:
+        "benchmarks/reditools2/reditable2bed/{species}/{id}.tsv"
+    shell:
+        """
+        docker run \
+            --cpus {threads} \
+            --rm \
+            -u $(id -u) \
+            -v $(pwd):/data:rw \
+            -w /data \
+            -t \
+            --name reditable2bed_{wildcards.id} \
+            ccc/reditools2:latest \
+            python /reditools2.0/src/cineca/reditools_table_to_bed.py \
+                -i {input} \
+                -o {output} > {log}
+        """
+
+
+# merge dna.sorted.bam files
+rule get_merge_dna_sorted_bam:
+    threads: 32
+    conda: "envs/re.yml"
+    input:
+        lambda wildcards: [
+            f"outputs/sorted_bam/{wildcards.species}/DNA/{i['id']}.sorted.bam" 
+                for i in MYDB.search(
+                    (Q.species == wildcards.species) &
+                    (Q.type == "DNA")
+                )
+            ]
+    output:
+        "outputs/sorted_bam/{species}/DNA/{species}.sorted.bam"
+    log:
+        "logs/merge_dna/{species}.log"
+    benchmark:
+        "benchmarks/merge_dna/{species}.tsv"
+    shell:
+        """
+        # NOTE: merge DNA.bam files
+        samtools merge -@ {threads} {output} {input} 
+        
+        # NOTE: index merge.bam file
+        samtools index -@ {threads} -b {output}
+        """
+
+
+# extract coverage from DNA files for `parallel_reditools.py`
+rule extract_cov_merge_dna_sorted_bam:
+    threads: 25
+    input: 
+        merged="outputs/sorted_bam/{species}/DNA/{species}.sorted.bam",
+        fai="genomic_data/{species}/{species}.fa.fai"
+    output: 
+        cov="outputs/reditools2/{species}/DNA/coverage/{species}.sorted.cov",
+        cov_dir=directory("outputs/reditools2/{species}/DNA/coverage/")
+    log:
+        "logs/reditools2/{species}/DNA/extract_coverage.log"
+    benchmark:
+        "benchmarks/reditools2/{species}/DNA/extract_coverage.tsv"
+    shell:
+        """
+        docker run \
+            --cpus {threads} \
+            --rm \
+            -u $(id -u) \
+            -v $(pwd):/data:rw \
+            -w /data \
+            -t \
+            ccc/reditools2:latest \
+            bash /reditools2.0/extract_coverage.sh \
+                {input.merged} {output.cov_dir}/ {input.fai} 1> {log} 2> {log}
+        """
+
+
+# Align DNA-seq using BWA-MEM
+# ==============================================================================
+rule qc_bwa:
+    conda: "envs/re.yml"
+    threads: 2
+    input:
+        "outputs/sorted_bam/{species}/DNA/{id}.bam"
+    output:
+        "outputs/sorted_bam/{species}/DNA/{id}.sorted.bam"
+    params:
+        mapq=config["mapq_cutoff"]["bwa"]
+    log:
+        "logs/qc_bwa/{species}/{id}.log"
+    benchmark:
+        "benchmarks/qc_bwa/{species}/{id}.tsv"
+    shell:
+        """
+        samtools view \
+            -b \
+            -h \
+            -q {params.mapq} \
+            -F 0x100 \
+            -F 0x800 \
+            -@ {threads} \
+            {input} 2> {log} \
+        | samtools sort \
+            -o {output} \
+            -O BAM \
+            -@ {threads} 1>> {log} 2>> {log} 
+        """
+
+# NOTE: passing directory as input
+rule bwa_mem_align:
+    conda: "envs/re.yml"
+    threads: 16
+    input:
+        fqdir="outputs/fastp/{id}/",
+        ref="genomic_data/{species}/{species}.fa"
+    output:
+        "outputs/sorted_bam/{species}/DNA/{id}.bam"
+    log:
+        "logs/bwa_mem/{species}/{id}.log"
+    benchmark:
+        "benchmarks/bwa_mem/{species}/{id}.tsv"
+    shell:
+        """
+        # NOTE: bwa-mem | samtools-view | samtools-sort
+        bwa mem \
+            -t {threads} \
+            {input.ref} \
+            $( ls {input.fqdir}/*.fq ) 2>> {log} \
+        | samtools view \
+            -b \
+            -h \
+            -o {output} \
+            -@ {threads} 2>> {log}
+        """
+
+
+# rule bwa_mem_index:
+#     conda: "envs/re.yml"
+#     threads: 16
+#     input:
+#         fnames=lambda wildcards: 
+#             [
+#                 MYDB_PATH / i for i in 
+#                 MYDB.search(
+#                     (Q.species == wildcards.species) &
+#                     (Q.type == "DNA") &
+#                     (Q.id == wildcards.id)
+#                 )[0]["fnames"]
+#             ],
+#         ref="genomic_data/{species}/{species}.fa"
+#     output:
+#         "outputs/sorted_bam/{species}/DNA/{id}.sorted.bam"
+#     params:
+#         mapq=config["mapq_cutoff"]["bwa"]
+#     log:
+#         "logs/bwa-mem/{species}/{id}.log"
+#     benchmark:
+#         "benchmarks/bwa_mem/{species}/{id}.tsv"
+#     shell:
+#         """
+#         # NOTE: check index file exist
+#         if [[ ! -e {params.ref}.bwt ]]; then
+#             bwa index {params.ref} 1>> {log} 2>> {log}
+#         fi
+
+#         # NOTE: bwa-mem | samtools-view | samtools-sort
+#         bwa mem \
+#             -t {threads} \
+#             {input.ref} \
+#             {input.fnames} \
+#             2>> {log} \
+#         | samtools view \
+#             --bam \
+#             --with-header \
+#             --min-MQ {params.mapq} \
+#             --exclude-flags 0x100 \
+#             --exclude-flags 0x800 \
+#             -@ {threads} \
+#         | samtools sort \
+#             -o {output} \
+#             -O BAM \
+#             -@ {threads} \
+#             1>> {log} 2>> {log}
+#         """
+
+
+# Align RNA-seq data to genome using STAR
+# ==============================================================================
+rule qc_star:
+    conda: "envs/re.yml"
+    threads: 2
+    input:
+        "outputs/sorted_bam/{species}/RNA/{id}/Aligned.out.sam"
+    output:
+        "outputs/sorted_bam/{species}/RNA/{id}.sorted.bam"
+    params:
+        mapq=config["mapq_cutoff"]["star"]
+    log:
+        "logs/qc_star/{species}/{id}.log"
+    benchmark:
+        "benchmarks/qc_star/{species}/{id}.tsv"
+    shell:
+        """
+        samtools view \
+            -b \
+            -h \
+            -q {params.mapq} \
+            -F 0x100 \
+            -F 0x800 \
+            -@ {threads} \
+            {input} 2> {log} \
+        | samtools sort \
+            -o {output} \
+            -O BAM \
+            -@ {threads} 1>> {log} 2>> {log} \
+        && samtools index {output} 1>> {log} 2>> {log}
+        """
+
+
+rule star_align:
+    conda: "envs/re.yml"
+    threads: 16
+    input:
+        fqdir="outputs/fastp/{id}",
+        asm="genomic_data/{species}/{species}.fa",
+        fai="genomic_data/{species}/{species}.fa.fai",
+        ant="genomic_data/{species}/{species}.gff3",
+        idx=lambda wildcards:
+            "genomic_data/%s/star_%s" % (
+                wildcards.species,
+                int(MYDB.search(Q.id == wildcards.id)[0]["nbases"]) - 1
+            )
+    output:
+        outdir=directory("outputs/sorted_bam/{species}/RNA/{id}/"),
+        outsam="outputs/sorted_bam/{species}/RNA/{id}/Aligned.out.sam"
+    log:
+        "logs/star/align/{species}/{id}.log"
+    benchmark:
+        "benchmarks/star/align/{species}/{id}.tsv"
+    shell:
+        """
+        # NOTE: STAR-align
+        docker run \
+            --rm \
+            --cpus {threads} \
+            -v $(pwd):/data:rw \
+            -v {MYDB_PATH}:{MYDB_PATH}:rw \
+            -w /data \
+            -u $(id -u):$(id -g) \
+            ccc/star \
+            STAR \
+                --runThreadN {threads} \
+                --genomeDir {input.idx} \
+                --readFilesIn $( ls {input.fqdir}/*.fq ) \
+                --outFileNamePrefix {output.outdir}/ > {log}
+        """
+
+
+rule star_index:
+    threads: 1
+    input:
+        asm="genomic_data/{species}/{species}.fa",
+        ant="genomic_data/{species}/{species}.gff3"
+    output:
+        directory("genomic_data/{species}/star_{overhang}")
+    log:
+        "logs/star/index/{species}_{overhang}.log"
+    benchmark:
+        "benchmarks/star/{species}_{overhang}.tsv"
+    shell:
+        """
+        # NOTE: STAR-index
+        docker run \
+            --rm \
+            --cpus {threads} \
+            -v $(pwd):/working:rw \
+            -w /working \
+            -u $(id -u):$(id -g) \
+            ccc/star \
+            STAR \
+                --runThreadN {threads} \
+                --runMode genomeGenerate \
+                --genomeDir {output} \
+                --genomeFastaFiles {input.asm} \
+                --sjdbGTFfile {input.ant} \
+                --sjdbOverhang {wildcards.overhang} 1>> {log} 2>> {log}
+        """
+
+
+# fastp
+# ====================================================================
+def get_fastp_params(wildcards):
+    records =  MYDB.search(Q.id == wildcards.id)[0]
+    id=records["id"]
+    f1=records["fnames"][0]
+    f2=records["fnames"][1] if len(records["fnames"]) == 2 else None
+    # 
+    if records["layout"] == "paired":
+        return f"""\
+            --in1 {MYDB_PATH}/{f1} \
+            --in2 {MYDB_PATH}/{f2} \
+            --out1 outputs/fastp/{id}/{id}_1.fq \
+            --out2 outputs/fastp/{id}/{id}_2.fq \
+            --detect_adapter_for_pe \
+            --cut_front \
+            --cut_tail \
+            --correction \
+            --json outputs/fastp/{id}/report.json \
+            --html outputs/fastp/{id}/report.html\
+        """
+    if records["layout"] == "single":
+        return f"""\
+            --in1 {MYDB_PATH}/{f1} \
+            --out1 outputs/fastp/{id}/{id}.fq \
+            --cut_front \
+            --cut_tail \
+            --json outputs/fastp/{id}/report.json \
+            --html outputs/fastp/{id}/report.html \
+        """ 
+
+
+rule fastp:
+    threads: 1
+    conda:
+        "envs/re.yml"
+    input:
+        lambda wildcards: [
+            MYDB_PATH / i for i in MYDB.search(
+                (Q.id == wildcards.id)
+            )[0]["fnames"]
+        ]
+    output:
+        directory("outputs/fastp/{id}/")
+    params:
+        get_fastp_params
+    log:
+        "logs/fastp/{id}.log"
+    benchmark:
+        "benchmarks/fastp/{id}.tsv"
+    shell:
+        """
+        mkdir -p {output}
+        fastp {params} 1> {log} 2> {log}
+        """
+
+# ====================================================================
+# template
+rule template:
+    conda:
+        "envs/re.yml"
+    input:
+    output:
+    log:
+    shell:
+        """
+        echo 'Hello world!'
         """
 
 
@@ -157,16 +859,16 @@ rule reditools2_dna_parallel_singleRNA:
 #     conda: "envs/re.yml"
 #     threads: 32
 #     input:
-#         target_pos="processed/reditools2/{species}/RNA/target_pos.bed",
-#         dna="processed/sorted_bam/{species}/DNA/merged.sorted.bam",
-#         cov_dna="processed/reditools2/{species}/DNA/coverage/merged.sorted.cov"
+#         target_pos="outputs/reditools2/{species}/RNA/target_pos.bed",
+#         dna="outputs/sorted_bam/{species}/DNA/merged.sorted.bam",
+#         cov_dna="outputs/reditools2/{species}/DNA/coverage/merged.sorted.cov"
 #     output:
-#         "processed/reditools2/{species}/DNA/dna.txt"
+#         "outputs/reditools2/{species}/DNA/dna.txt"
 #     params:
 #         ref="genomic_data/{species}/{species}.fa",
 #         size_file="genomic_data/{species}/{species}.fa.fai",
-#         tmp_dir="processed/reditools2/{species}/DNA/tmp/",
-#         cov_dir="processed/reditools2/{species}/DNA/coverage/"
+#         tmp_dir="outputs/reditools2/{species}/DNA/tmp/",
+#         cov_dir="outputs/reditools2/{species}/DNA/coverage/"
 #     log:
 #         "logs/reditools2/{species}/DNA/dna.log"
 #     shell:
@@ -210,23 +912,24 @@ rule reditools2_dna_parallel_singleRNA:
 #         gunzip {output}.gz
 #         """
 
+
 # # Step 2: REDITools2 for DNA-seq
 # rule reditools2_dna:
 #     conda: "envs/re.yml"
 #     threads: 24
 #     input:
-#         target_pos="processed/reditools2/{species}/RNA/{tissue}/{id}.bed",
-#         dna="processed/sorted_bam/{species}/DNA/merged.sorted.bam",
-#         cov_dna="processed/reditools2/{species}/DNA/coverage/merged.sorted.cov"
+#         target_pos="outputs/reditools2/{species}/RNA/{id}.bed",
+#         dna="outputs/sorted_bam/{species}/DNA/merged.sorted.bam",
+#         cov_dna="outputs/reditools2/{species}/DNA/coverage/merged.sorted.cov"
 #     output:
-#         "processed/reditools2/{species}/DNA/{tissue}/{id}.txt"
+#         "outputs/reditools2/{species}/DNA/{id}.txt"
 #     params:
 #         ref="genomic_data/{species}/{species}.fa",
 #         size_file="genomic_data/{species}/{species}.fa.fai",
-#         tmp_dir="processed/reditools2/{species}/DNA/{tissue}/{id}/tmp/",
-#         cov_dir="processed/reditools2/{species}/DNA/coverage/"
+#         tmp_dir="outputs/reditools2/{species}/DNA/{id}/tmp/",
+#         cov_dir="outputs/reditools2/{species}/DNA/coverage/"
 #     log:
-#         "logs/reditools2/{species}/DNA/{tissue}/{id}.log"
+#         "logs/reditools2/{species}/DNA/{id}.log"
 #     shell:
 #         """
 #         # remove tmp_dir if exist
@@ -274,48 +977,18 @@ rule reditools2_dna_parallel_singleRNA:
 #         """
 
 
-# Step 3: annotate RNA.txt with DNA.txt
-rule reditools2_annot:
-    threads: 1
-    input:
-        rna="processed/reditools2/{species}/RNA/{tissue}/{id}.txt",
-        dna="processed/reditools2/{species}/DNA/{tissue}/{id}.txt"
-    output:
-        "processed/reditools2/{species}/Final/{tissue}/{id}.txt"
-    params:
-        ref="genomic_data/{species}/{species}.fa.fai"
-    log:
-        "logs/reditools2/{species}/Final/{tissue}/{id}.log"
-    shell:
-        """
-        docker run \
-            --cpus {threads} \
-            --rm \
-            -u $(id -u) \
-            -v $(pwd):/data:rw \
-            -w /data \
-            --name reditools_annot_{wildcards.id} \
-            ccc/reditools2:latest \
-                python /reditools2.0/src/cineca/annotate_with_DNA.py \
-                    -R {params.ref} \
-                    -r {input.rna} \
-                    -d {input.dna} \
-                    2> {log} 1> {output}
-        """
-
-
 # # Step 3: annotate RNA.txt with DNA.txt
 # rule reditools2_annot:
 #     threads: 1
 #     input:
-#         rna="processed/reditools2/{species}/RNA/{tissue}/{id}.txt",
-#         dna="processed/reditools2/{species}/DNA/{tissue}/{id}.txt"
+#         rna="outputs/reditools2/{species}/RNA/{id}.txt",
+#         dna="outputs/reditools2/{species}/DNA/{id}.txt"
 #     output:
-#         "processed/reditools2/{species}/Final/{tissue}/{id}.txt"
+#         "outputs/reditools2/{species}/Final/{id}.txt"
 #     params:
 #         ref="genomic_data/{species}/{species}.fa.fai"
 #     log:
-#         "logs/reditools2/{species}/Final/{tissue}/{id}.log"
+#         "logs/reditools2/{species}/Final/{id}.log"
 #     shell:
 #         """
 #         docker run \
@@ -332,262 +1005,3 @@ rule reditools2_annot:
 #                     -d {input.dna} \
 #                     2> {log} 1> {output}
 #         """
-
-
-# RNA.txt -> RNA.bed
-rule reditools_table_to_bed:
-    threads: 1
-    input:
-        "processed/reditools2/{species}/RNA/{tissue}/{id}.txt"
-    output:
-        "processed/reditools2/{species}/RNA/{tissue}/{id}.bed"
-    log:
-        "logs/reditools2/{species}/to_bed/{tissue}/{id}.log"
-    shell:
-        """
-        # awk
-        cat {input} | \
-            awk -v OFS='\\t' 'NR != 1 {{print}}' > {input}.tmp
-
-        # docker run reditools
-        docker run \
-            --cpus {threads} \
-            --rm \
-            -u $(id -u) \
-            -v $(pwd):/data:rw \
-            -w /data \
-            -t \
-            --name reditools_table_to_bed_{wildcards.id} \
-            ccc/reditools2:latest \
-            python /reditools2.0/src/cineca/reditools_table_to_bed.py \
-                -i {input}.tmp \
-                -o {output} > {log}
-
-        # rm .tmp file
-        rm {input}.tmp
-        """
-
-
-# merge RNA.bed files
-rule merge_rna:
-    threads: 4
-    input:
-        lambda wildcards:
-            [
-                "processed/reditools2/%s/RNA/%s/%s.bed" % (
-                r["species"],
-                r["tissue"],
-                r["id"]
-                ) for r in mydb.search(
-                    (Q.species == wildcards.species) &
-                    (Q.type == "RNA")
-                )
-            ]
-    output:
-        "processed/reditools2/{species}/RNA/target_pos.bed"
-    log:
-        "logs/bedtools/{species}.log"
-    shell:
-        """
-        # cat and sort all input files (low-mem)
-        touch {output}.tmp
-        for file in {input}
-        do 
-            # cat and sort 2 bed files
-            cat {output}.tmp "$file" | sort -k1,1 -k2,2n > {output}.tmp
-        done
-
-        # bedtools merge
-        docker run \
-            --cpus {threads} \
-            --rm \
-            -u $(id -u) \
-            -v $(pwd):/data:rw \
-            -w /data \
-            -t \
-            biocontainers/bedtools:v2.27.1dfsg-4-deb_cv1 \
-            bedtools merge -i {output}.tmp 1> {output} 2> {log}
-        
-        # cleanup
-        rm {output}.tmp
-        """
-    
-
-
-# merge dna.sorted.bam files
-rule merge_dna:
-    threads: 32
-    conda: "envs/re.yml"
-    input:
-        lambda wildcards: [
-            f"processed/sorted_bam/{wildcards.species}/DNA/{i['id']}.sorted.bam" 
-                for i in mydb.search(
-                    (Q.species == wildcards.species) &
-                    (Q.type == "DNA")
-                )
-            ]
-    output:
-        "processed/sorted_bam/{species}/DNA/merged.sorted.bam"
-    shell:
-        """
-        # merge DNA.bam files
-        samtools merge \
-            -@ {threads} \
-            {output} \
-            {input} 
-        
-        # index merge.bam file
-        samtools index -@ {threads} -b {output}
-        """
-
-
-# extract coverage from DNA files for `parallel_reditools.py`
-rule extract_cov_dna:
-    threads: 25
-    input: "processed/sorted_bam/{species}/DNA/merged.sorted.bam"
-    output: "processed/reditools2/{species}/DNA/coverage/merged.sorted.cov"
-    params:
-        size_file="genomic_data/{species}/{species}.fa.fai",
-        cov_dir="processed/reditools2/{species}/DNA/coverage/"
-    log:
-        "logs/reditools2/{species}/DNA/extract_coverage.log"
-    shell:
-        """
-        docker run \
-            --cpus {threads} \
-            --rm \
-            -u $(id -u) \
-            -v $(pwd):/data:rw \
-            -w /data \
-            -t \
-            ccc/reditools2:latest \
-            bash /reditools2.0/extract_coverage.sh \
-                {input} {params.cov_dir} {params.size_file} \
-                1> {log} 2> {log}
-        """
-
-
-# Align DNA-seq using BWA-MEM
-# ==============================================================================
-# BWA-MEM
-rule bwa_mem:
-    conda: "envs/re.yml"
-    threads: 16
-    input:
-        qry=lambda wildcards: 
-            [
-                MYDB_PATH / i for i in 
-                mydb.search(
-                    (Q.species == wildcards.species) &
-                    (Q.type == "DNA") &
-                    (Q.id == wildcards.id)
-                )[0]["fnames"]
-            ]
-    output:
-        "processed/sorted_bam/{species}/DNA/{id}.sorted.bam"
-    params:
-        ref="genomic_data/{species}/{species}.fa"
-    log:
-        "logs/bwa-mem/{species}/{id}.log"
-    shell:
-        """
-        # check index file exist
-        if [[ ! -e {params.ref}.bwt ]]; then
-            bwa index {params.ref} 1>> {log} 2>> {log}
-        fi
-        bwa mem \
-            -t {threads} \
-            {params.ref} \
-            {input.qry} \
-            2>> {log} | \
-        samtools sort \
-            -@ {threads} \
-            -O BAM \
-            -o {output} \
-            1>> {log} 2>> {log}
-        """
-
-
-# Align RNA-seq data using STAR
-# ==============================================================================
-rule star:
-    conda: "envs/re.yml"
-    threads: 16
-    input:
-        qry=lambda wildcards: 
-            [
-                MYDB_PATH / i for i in 
-                mydb.search(
-                    (Q.species == wildcards.species) &
-                    (Q.tissue == wildcards.tissue) &
-                    (Q.type == "RNA") &
-                    (Q.id == wildcards.id)
-                )[0]["fnames"]
-            ]
-    output:
-        "processed/sorted_bam/{species}/RNA/{tissue}/{id}/Aligned.out.sam"
-    params:
-        ref_fa="genomic_data/{species}/{species}.fa",
-        ref_annt="genomic_data/{species}/{species}.gff3",
-        out_prefix="processed/sorted_bam/{species}/RNA/{tissue}/{id}/",
-        ovhang=lambda wildcards: 
-            int(mydb.search(Q.id == wildcards.id)[0]["nbases"]) - 1
-    log:
-        "logs/star/{species}/{tissue}/{id}.log"
-    shell:
-        """
-        # STAR indicing
-        if [[ ! -e genomic_data/{wildcards.species}/star_{params.ovhang} ]]; then 
-            docker run \
-                --rm \
-                --cpus {threads} \
-                -v $(pwd):/working:rw \
-                -w /working \
-                -u $(id -u):$(id -g) \
-                ccc/star \
-                STAR \
-                    --runThreadN {threads} \
-                    --runMode genomeGenerate \
-                    --genomeDir genomic_data/{wildcards.species}/star_{params.ovhang} \
-                    --genomeFastaFiles {params.ref_fa} \
-                    --sjdbGTFfile {params.ref_annt} \
-                    --sjdbOverhang {params.ovhang} 1>> {log} 2>> {log}
-        fi
-        
-        # STAR mapping
-        docker run \
-            --rm \
-            --cpus {threads} \
-            -v $(pwd):/data:rw \
-            -v {MYDB_PATH}:{MYDB_PATH}:rw \
-            -w /data \
-            -u $(id -u):$(id -g) \
-            ccc/star \
-            STAR \
-                --runThreadN {threads} \
-                --genomeDir genomic_data/{wildcards.species}/star_{params.ovhang} \
-                --readFilesIn {input.qry} \
-                --outFileNamePrefix {params.out_prefix} 1>> {log} 2>> {log}
-        
-        # # sam -> sorted.bam
-        # samtools sort \
-        #     -@ {threads} \
-        #     -O BAM \
-        #     -o {output} \
-        #     {params.out_prefix}/Aligned.out.sam \
-        #     1>> {log} 2>> {log}
-        """
-
-
-# ====================================================================
-# template
-rule template:
-    conda:
-        "envs/re.yml"
-    input:
-    output:
-    log:
-    shell:
-        """
-        echo 'Hello world!'
-        """

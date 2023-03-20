@@ -1,19 +1,24 @@
 from typing import List
 
 class Location(object):
+    _REF_ORDER = None
     def __init__(
             self,
             reg: str,
             pos: int,
-            order: List,
+            order: list = None,
             name: str = "<name>"
         ) -> None:
         self.reg = reg
         self.pos = pos
-        self.order = order
+        self.order = order if order else Location._REF_ORDER
         self.name = name
         self.val = self.order.index(self.reg) + self.pos * (10 ** -10)
-        pass
+        return
+    
+    def set_ref_order(new: list) -> None:
+        Location._REF_ORDER = new
+        return
     
     def cal_val(self) -> None:
         return self.order.index(self.reg) + self.pos * (10 ** -10)

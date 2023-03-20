@@ -1,0 +1,28 @@
+#!/bin/bash
+
+# requesting output or rule
+OUTPUT=all
+# OUTPUT=outputs/reditools/Egr/egr-test-tr.txt
+
+# record current time
+datetime=$(date +%Y%m%d-%H:%M:%S)
+
+# dry-run && run || more nohup/*.dry
+if conda run \
+    -n snakemake \
+    --no-capture-output \
+    --live-stream \
+    snakemake \
+        -c 55 \
+        --use-conda \
+        --rerun-incomplete \
+        -np \
+        $OUTPUT \
+        > nohup/snakemake.${datetime}.dry
+then 
+    echo 'LGTM!'
+else
+    echo 'Something'"'"'s wrong'
+fi
+
+code nohup/snakemake.${datetime}.dry

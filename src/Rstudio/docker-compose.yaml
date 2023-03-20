@@ -1,9 +1,16 @@
+version: '3.6'
 services:
-    rstudio_re:
-        image: ccc/rstudio:re
-        restart: unless-stopped
-        command: /init
-        environment:
-            - PASSWORD=0000
-        ports:
-            - 8787:8787
+  re:
+    build:
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: /init
+    environment:
+      - PASSWORD=0000
+      - TZ=Asia/Taipei
+      - USERID=1002
+      - GROUPID=1002
+    volumes:
+      - /home/b05b01002/HDD3/project_RE:/home/rstudio/local:rw
+    ports:
+      - 192.168.50.78:8787:8787

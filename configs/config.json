@@ -4,5 +4,8 @@
     "mapq_cutoff": {
         "bwa": 30,
         "star": 255
+    },
+    "filter_presets": {
+        "set1": "$5 > 10 && $9 > 0.1 && $9 < 0.9 && $14 == 0.00 {print $1,$2}"
     }
 }

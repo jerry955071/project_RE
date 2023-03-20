@@ -1,0 +1,62 @@
+{
+    "threads": 20,
+    "target_positions": "outputs/target_positions/Ptr/set1.txt",
+    "tmpdir1": "outputs/toREDIt/Ptr/",
+    "tmpdir2": "outputs/outREDIt/Ptr/tmp/",
+    "outdir": "outputs/outREDIt/Ptr/pvalue.csv",
+    "redithead": {
+      "Region": "str",
+      "Position": "int64",
+      "Reference": "str",
+      "Strand": "int64",
+      "Coverage": "float64",
+      "MeanQ": "float64",
+      "BaseCount": "object",
+      "AllSubs": "str",
+      "Frequency": "float64",
+      "gCoverage": "object",
+      "gMeanQ": "object",
+      "gBaseCount": "str",
+      "gAllSubs": "str",
+      "gFrequency": "object"
+    },
+    "pairing": [
+      "xylem:phloem",
+      "xylem:leaf",
+      "xylem:shoot"
+    ],
+    "samples": {
+        "xylem": [
+          "outputs/target_reditable/Ptr/set1/ptr-tsp1-xr.txt",
+          "outputs/target_reditable/Ptr/set1/ptr-tsp2-xr.txt",
+          "outputs/target_reditable/Ptr/set1/ptr-tsp3-xr.txt",
+          "outputs/target_reditable/Ptr/set1/ptr-tsp4-xr.txt",
+          "outputs/target_reditable/Ptr/set1/ptr-tsp5-xr.txt",
+          "outputs/target_reditable/Ptr/set1/ptr-tsp6-xr.txt"
+        ],
+        "phloem": [
+          "outputs/target_reditable/Ptr/set1/ptr-tsp1-pr.txt",
+          "outputs/target_reditable/Ptr/set1/ptr-tsp2-pr.txt",
+          "outputs/target_reditable/Ptr/set1/ptr-tsp3-pr.txt",
+          "outputs/target_reditable/Ptr/set1/ptr-tsp4-pr.txt",
+          "outputs/target_reditable/Ptr/set1/ptr-tsp5-pr.txt",
+          "outputs/target_reditable/Ptr/set1/ptr-tsp6-pr.txt"
+        ],
+        "leaf": [
+          "outputs/target_reditable/Ptr/set1/ptr-tsp1-lr.txt",
+          "outputs/target_reditable/Ptr/set1/ptr-tsp2-lr.txt",
+          "outputs/target_reditable/Ptr/set1/ptr-tsp3-lr.txt",
+          "outputs/target_reditable/Ptr/set1/ptr-tsp4-lr.txt",
+          "outputs/target_reditable/Ptr/set1/ptr-tsp5-lr.txt",
+          "outputs/target_reditable/Ptr/set1/ptr-tsp6-lr.txt"
+        ],
+        "shoot": [
+          "outputs/target_reditable/Ptr/set1/ptr-tsp1-sr.txt",
+          "outputs/target_reditable/Ptr/set1/ptr-tsp2-sr.txt",
+          "outputs/target_reditable/Ptr/set1/ptr-tsp3-sr.txt",
+          "outputs/target_reditable/Ptr/set1/ptr-tsp4-sr.txt",
+          "outputs/target_reditable/Ptr/set1/ptr-tsp5-sr.txt",
+          "outputs/target_reditable/Ptr/set1/ptr-tsp6-sr.txt"
+        ]
+    }
+}

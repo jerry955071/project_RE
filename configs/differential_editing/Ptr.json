@@ -1,7 +1,9 @@
 {
     "threads": 20,
     "target_positions": "shout/edsites/ptr.txt",
-    "tmpdir":"temp/toREDIt/",
+    "tmpdir1": "temp/toREDIt/Ptr/",
+    "tmpdir2": "temp/outREDIt/Ptr/tmp/",
+    "outdir": "outputs/outREDIt/Ptr/ptr.csv",
     "redithead": {
       "Region": "str",
       "Position": "int64",
