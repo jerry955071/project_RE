@@ -62,13 +62,13 @@ def main(params, reditables, target_positions):
                 if pd.isna(df.loc[(reg, pos), "AllSubs"])[0]:
                     pass
                 else:
-                    for i in df.loc[(reg, pos), "AllSubs"].split(" "):
+                    for i in df.loc[(reg, pos), "AllSubs"][0].split(" "):
                         allsubs.add(i)
                 
                 # record basecounts
                 rname.append(sample)
                 basecounts.append(
-                    df.loc[(reg, pos), "BaseCount"] + \
+                    df.loc[(reg, pos), "BaseCount"][0] + \
                     [
                         {
                             "x": "xylem",
